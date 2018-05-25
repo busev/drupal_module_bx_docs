@@ -1,0 +1,736 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: busev
+ * Date: 22.02.2018
+ * Time: 9:47
+ */
+
+
+/**
+ * Implements hook_block_info().
+ * описываем используемые блоки
+ */
+function alutech_bx_docs_block_info()
+{
+	$blocks['alutech_bx_docs'] = array(
+		'info'  => t('Сертификаты, техническая документация и рекламные материалы'),
+		'cache' => DRUPAL_CACHE_PER_PAGE,
+	);
+	$blocks['alutech_bx_photos'] = array(
+		'info'  => t('Фотогалерея'),
+		'cache' => DRUPAL_CACHE_PER_PAGE,
+	);
+	$blocks['alutech_bx_faq'] = array(
+		'info'  => t('Вопрос - ответ'),
+		'cache' => DRUPAL_CACHE_PER_PAGE,
+	);
+	$blocks['alutech_bx_video'] = array(
+		'info'  => t('Видео'),
+		'cache' => DRUPAL_CACHE_PER_PAGE,
+	);
+
+	return $blocks;
+}
+
+/**
+ * Implements hook_menu().
+ * задаем URL, его заголовок (title), описание (description), функция обработки (page callback), передаваемые аргументы (page arguments), параметры доступа (access arguments), тип (type) и «вес» (weight)
+ */
+function alutech_bx_docs_menu()
+{
+	$items = array();
+
+	$items['admin/structure/alutech_bx_docs'] = array(
+		'title'            => t('Правила загрузки документации из битрикса'),
+		'description'      => t('Правила загрузки документации из битрикса'),
+		'page callback'    => 'alutech_bx_docs_list',
+		'access arguments' => array('administer site configuration'),
+	);
+
+	$items['admin/structure/alutech_bx_docs/list'] = array(
+		'title'  => t('Список правил'),
+		'type'   => MENU_DEFAULT_LOCAL_TASK,
+		'weight' => 1,
+	);
+
+	$items['admin/structure/alutech_bx_docs/add'] = array(
+		'title'            => t('Добавить правило'),
+		'page callback'    => 'drupal_get_form',
+		'page arguments'   => array('alutech_bx_docs_form'),
+		'access arguments' => array('administer site configuration'),
+		'type'             => MENU_LOCAL_TASK,
+		'weight'           => 2,
+	);
+
+	$items['admin/structure/alutech_bx_docs/%docs/edit'] = array(
+		'title'            => t('Редактировать правило'),
+		'page callback'    => 'drupal_get_form',
+		'page arguments'   => array('alutech_bx_docs_form', 3),
+		'access arguments' => array('administer site configuration'),
+		'type'             => MENU_CALLBACK,
+	);
+
+	$items['admin/structure/alutech_bx_docs/%docs/delete'] = array(
+		'title'            => t('Удалить правило'),
+		'page callback'    => 'alutech_bx_docs_delete',
+		'page arguments'   => array(3),
+		'access arguments' => array('administer site configuration'),
+		'type'             => MENU_CALLBACK,
+	);
+
+	/*$items['alutech_bx_docs'] = array(
+		'title'            => t('Список правил'),
+		'page callback'    => '_alutech_bx_docs_page',
+		'access arguments' => array('access content'),
+	);
+
+	$items['alutech_bx_docs/%docs/items'] = array(
+		'title'            => t('Содержимое правила'),
+		'page callback'    => 'alutech_bx_docs_content',
+		'page arguments'   => array(1),
+		'access callback'  => TRUE,
+		'access arguments' => array('access content'),
+		'type'             => MENU_CALLBACK,
+	);*/
+
+	return $items;
+}
+
+/*
+ * форма, через которую добавляем и редактируем пути к страницам и их привязки к документации из БД Битрикса
+ * */
+function alutech_bx_docs_form($form, &$form_state, $docs = null)
+{
+	$form['drp_path'] = array(
+		'#title'         => t('Путь к странице'),
+		'#description'   => t('Введите путь к странице, предназначенной для вывода документации.'),
+		'#type'          => 'textfield',
+		'#default_value' => $docs ? $docs['drp_path'] : '',
+		'#required'      => true,
+		'#ajax' => array(
+			'callback' => 'ajax_view_page_nid_callback',
+			'wrapper' => 'view-page-nid-textfield',
+			'method' => 'replace',
+			'effect' => 'fade',
+		),
+	);
+	$form['drp_nid'] = array(
+		'#title'         => t('NID ноды'),
+		'#description'   => t('Определяется самостоятельно, после ввода пути к странице.'),
+		'#type'          => 'textfield',
+		'#value' => (
+		isset($form_state['values']['drp_path']) && !empty($form_state['values']['drp_path'])
+			?
+			alutech_bx_docs_get_nid($form_state['values']['drp_path'])
+			:
+			$docs
+				?
+				!isset($form_state['values']['drp_path'])
+					?
+					$docs['drp_nid']
+					:
+					alutech_bx_docs_get_nid($form_state['values']['drp_path'])
+				:
+				''
+		),
+		'#default_value' => $docs ? $docs['drp_nid'] : '',
+		'#prefix' => '<div id="view-page-nid-textfield">',
+		'#suffix' => '</div>',
+	);
+	$form['drp_pnid'] = array(
+		'#title'         => t('NID родительской ноды'),
+		'#description'   => t('Определяется самостоятельно, после ввода пути к странице.'),
+		'#type'          => 'textfield',
+		'#value' => (
+		isset($form_state['values']['drp_path']) && !empty($form_state['values']['drp_path'])
+			?
+			alutech_bx_docs_get_nid($form_state['values']['drp_path'], 1)
+			:
+			$docs
+				?
+				!isset($form_state['values']['drp_path'])
+					?
+					$docs['drp_nid']
+					:
+					alutech_bx_docs_get_nid($form_state['values']['drp_path'], 1)
+				:
+				''
+		),
+		'#default_value' => $docs ? $docs['drp_pnid'] : '',
+		'#prefix' => '<div id="view-parent-nid-textfield">',
+		'#suffix' => '</div>',
+	);
+	$form['bx_lang'] = array(
+		'#title'         => t('Язык страницы'),
+		'#description'   => t('Выберите принадлежащий странице язык.'),
+		'#type'          => 'select',
+		'#options'       => alutech_bx_docs_language_list(),
+		'#default_value' => $docs ? $docs['bx_lang'] : ''
+	);
+	$form['bx_type'] = array(
+		'#title'         => t('Тип документации'),
+		'#description'   => t('Выберите тип документации.'),
+		'#type'          => 'select',
+		'#options' => array(
+			0  => t('Выберите значение'),
+			35 => t('Фотогалерея'),
+			36 => t('Сертификаты'),
+			37 => t('Техническая документация'),
+			38 => t('Вопрос - ответ'),
+			42 => t('Рекламные материалы'),
+			57 => t('Видео'),
+		),
+		'#default_value' => isset($form_state['values']['bx_type']) ? $form_state['values']['bx_type'] : $docs ? $docs['bx_type'] : '',
+		/*'#post_render' => array('form_option_disabled'),*/
+		'#ajax' => array(
+			'callback' => 'ajax_view_display_dropdown_callback',
+			'wrapper' => 'view-display-dropdown',
+			'method' => 'replace',
+			'effect' => 'fade',
+		),
+	);
+	$form['bx_id'] = array(
+		'#title'         => t('Группа продукции'),
+		'#description'   => t('Выберите группу продукции.'),
+		'#type'          => 'select',
+		'#prefix' => '<div id="view-display-dropdown">',
+		'#suffix' => '</div>',
+		'#options' => (
+			( isset( $form_state['values']['bx_type'] ) && $form_state['values']['bx_type'] > 0 )
+				?
+				bx_id_views_display_option($form_state['values']['bx_lang'], $form_state['values']['bx_type'])
+				:
+				$docs
+					?
+					!isset($form_state['values']['bx_type'])
+						?
+						bx_id_views_display_option($docs['bx_lang'], $docs['bx_type'])
+						:
+						bx_id_views_display_option($form_state['values']['bx_lang'], $form_state['values']['bx_type'])
+					:
+					array()
+		),
+		'#default_value' => isset($form_state['values']['bx_id']) ? $form_state['values']['bx_id'] : ( $docs ? $docs['bx_id'] : '' ),
+		/*'#pre_render' => array('form_option_active'),*/
+		'#ajax' => array(
+			'callback' => 'ajax_view_short_response_callback',
+			'wrapper' => 'view-short-response',
+			'method' => 'replace',
+			'effect' => 'fade',
+		),
+	);
+	$form['bx_short_response'] = array(
+		'#title'         => t('Краткий список документации'),
+		'#description'   => t('Заполняется автоматически, из БД Битрикса.'),
+		'#type'          => 'textfield',
+		'#prefix' => '<div id="view-short-response">',
+		'#suffix' => '</div>',
+		'#value' => (
+			(isset($form_state['values']['bx_id']) && $form_state['values']['bx_id'] > 0)
+				?
+				bx_id_views_display_option($form_state['values']['bx_lang'], $form_state['values']['bx_type'], $form_state['values']['bx_id'], TRUE)
+				:
+				$docs
+					?
+					!isset($form_state['values']['bx_type'])
+						?
+						$docs['bx_short_response']
+						:
+						bx_id_views_display_option($form_state['values']['bx_lang'], $form_state['values']['bx_type'], $form_state['values']['bx_id'], TRUE)
+					:
+					''
+		),
+		'#default_value' => isset($form_state['values']['bx_short_response']) ? $form_state['values']['bx_short_response'] : ( $docs ? $docs['bx_short_response'] : '' ),
+		'#maxlength' => null,
+	);
+	$form['bx_full_response'] = array(
+		'#title'         => t('Полный список документации'),
+		'#description'   => t('Заполняется автоматически, из БД Битрикса.'),
+		'#type'          => 'textfield',
+		'#prefix' => '<div id="view-full-response">',
+		'#suffix' => '</div>',
+		'#value' => (
+			(isset($form_state['values']['bx_id']) && $form_state['values']['bx_id'] > 0)
+				?
+				bx_id_views_display_option($form_state['values']['bx_lang'], $form_state['values']['bx_type'], $form_state['values']['bx_id'])
+				:
+				$docs
+					?
+					!isset($form_state['values']['bx_type'])
+						?
+						$docs['bx_full_response']
+						:
+						bx_id_views_display_option($form_state['values']['bx_lang'], $form_state['values']['bx_type'], $form_state['values']['bx_id'])
+					:
+					''
+		),
+		'#default_value' => isset($form_state['values']['bx_full_response']) ? $form_state['values']['bx_full_response'] : ( $docs ? $docs['bx_full_response'] : '' ),
+		'#maxlength' => null,
+	);
+	$form['submit'] = array(
+		'#type'  => 'submit',
+		'#value' => $docs ? t('Save') : t('Add'),
+	);
+	if ($docs) {
+		$form['id'] = array(
+			'#type'  => 'value',
+			'#value' => $docs['id'],
+		);
+	}
+	return $form;
+}
+
+/*
+ * Функция AJAX, вызывается при изменении значения в поле "Тип документации".
+ * Обнуляет значение по умолчинию поля "Группа продукции".
+ * А так же заменяет на пустое значение, при отмене выбора в предыдущем поле "Тип документации"
+ * */
+function ajax_view_display_dropdown_callback($form, &$form_state)
+{
+	$commands = array();
+	$commands[] = ajax_command_replace('#view-display-dropdown', drupal_render($form['bx_id']));
+	$commands[] = ajax_command_replace('#view-short-response', drupal_render($form['bx_short_response']));
+	$commands[] = ajax_command_replace("#view-full-response", drupal_render($form['bx_full_response']));
+	return array('#type' => 'ajax', '#commands' => $commands);
+}
+function ajax_view_short_response_callback($form, &$form_state)
+{
+	$commands = array();
+	$commands[] = ajax_command_replace('#view-short-response', drupal_render($form['bx_short_response']));
+  $commands[] = ajax_command_replace("#view-full-response", drupal_render($form['bx_full_response']));
+  return array('#type' => 'ajax', '#commands' => $commands);
+}
+function ajax_view_page_nid_callback($form, &$form_state)
+{
+	$commands = array();
+	$commands[] = ajax_command_replace('#view-page-nid-textfield', drupal_render($form['drp_nid']));
+	$commands[] = ajax_command_replace('#view-parent-nid-textfield', drupal_render($form['drp_pnid']));
+	return array('#type' => 'ajax', '#commands' => $commands);
+}
+
+/*
+ * Подключается к Битрикс и забирает список продукции, к которой существует документация.
+ * $iblock_id - ID информационного блока в Битриксе.
+ * $lg - язык страницы
+ * $ib - id инфоблока в битриксе
+ * $sc - id секции в битриксе
+ * $sh - при значении TRUE возвращает несколько первых элементов, иначе вернет все
+ * */
+function bx_id_views_display_option($lg, $ib, $sc = NULL, $sh = NULL)
+{
+	$ar_res = array();
+	$query = '?';
+
+	if($lg)
+		$query .= 'lang=' . $lg;
+	if($ib)
+		$query .= '&iblock_id=' . $ib;
+	if($sc)
+		$query .= '&section_id=' . $sc;
+	if($sh)
+		$query .= '&short=' . $sh;
+	$url = 'http://alutech-group.com/api/bitrixDoc'.$query;
+
+	$request = drupal_http_request($url);
+	if(isset($request->data))
+		$json_response = drupal_json_decode($request->data);
+
+	if(isset($json_response) && !empty($json_response) && $json_response != NULL)
+	{
+		if($sc)
+		{
+			$ar_res = $request;
+		}
+		else
+		{
+			$ar_res[] = t('Выберите значение');
+			foreach ($json_response as $response_data)
+				$ar_res[$response_data['ID']] = $response_data['NAME'];
+		}
+	}
+
+	return $ar_res;
+}
+
+/*
+ * Возвращает NID ноды, как для страницы с документацией, так и для родителя, где должны выводиться блоки
+ * */
+function alutech_bx_docs_get_nid($url, $level = NULL)
+{
+	$arUrl = explode( '/', mb_substr( trim( $url ), 1 ) );
+	$lang = array_shift($arUrl);
+
+	if($level)
+		array_pop($arUrl);
+
+	$str = drupal_lookup_path('source', implode("/", $arUrl), alutech_bx_docs_language_list($lang));
+	$nid = substr(strstr($str, '/'), 1, strlen($str));
+
+	return $nid;
+
+	// URL страницы по ее nid (products/sectional_gates/garage/trend/docs)
+	//pp(drupal_get_path_alias("node/$node->nid"));
+
+	// nid страницы (node/2419) по ее URL. Подходит для поиска nid родителя.
+	//pp(drupal_lookup_path('source', 'products/sectional_gates/garage/trend', $node->language));
+}
+
+/*
+ * обработка данных, введенных в форму
+ * получаем данные из $form_state и обрабатываем их
+ * если что-то не так — выкидывается стандартный form_set_error(), в котором мы указываем имя поля формы и сообщение
+ * */
+function alutech_bx_docs_form_validate($form, &$form_state)
+{
+	$url = $form_state['values']['drp_path'];
+	$mes = t('Вы пытаетесь сохранить бестолковый адрес к странице. Проверьте его более внимательно: ') . $url;
+	$pattern = '/\/[-a-zA-Z0-9@:%_\+.~#?&\/\/=]*/i';
+
+	if (!preg_match($pattern, $url)) {
+		form_set_error('drp_path', $mes);
+	}
+}
+
+/*
+ * после того как прошли валидацию, делаем запись в БД
+ * drupal_write_record() делает запись в БД
+ * drupal_set_message() показывает системное сообщение
+ * drupal_goto() перекидывает на заданный URL
+ * */
+function alutech_bx_docs_form_submit($form, &$form_state)
+{
+	$docs = array(
+		'drp_path'          => $form_state['values']['drp_path'],
+		'drp_nid'           => $form_state['values']['drp_nid'],
+		'drp_pnid'          => $form_state['values']['drp_pnid'],
+		'bx_lang'           => $form_state['values']['bx_lang'],
+		'bx_type'           => $form_state['values']['bx_type'],
+		'bx_id'             => $form_state['values']['bx_id'],
+		'bx_short_response' => $form_state['values']['bx_short_response']->data,
+		'bx_full_response'  => $form_state['values']['bx_full_response']->data,
+	);
+
+	if (isset($form_state['values']['id']))
+	{
+		// Сохраняем редактируемую запись
+		$docs['id'] = $form_state['values']['id'];
+		$docs['changed'] = time();
+		drupal_write_record('alutechbxdocs', $docs, 'id');
+		drupal_set_message(t('Изменения внесены'));
+	}
+	else
+	{
+		// Добавляем новую запись
+		$docs['created'] = time();
+		$docs['changed'] = time();
+		drupal_write_record('alutechbxdocs', $docs);
+		drupal_set_message(t('Создана новая запись'));
+	}
+
+	drupal_goto('admin/structure/alutech_bx_docs');
+}
+
+/*
+ * для того чтобы форма принимала не просто ID ленты ($docs), а ее данные, нужно определить hool_load()
+ * теперь в качестве $docs в форму будет передаваться не число, а объект с данными
+ * */
+function docs_load($id)
+{
+	$docs = db_select('alutechbxdocs', 'n')
+		->fields('n', array('id', 'drp_path', 'drp_nid', 'drp_pnid', 'bx_lang', 'bx_type', 'bx_id', 'bx_short_response', 'bx_full_response', 'created', 'changed'))
+		->condition('n.id', $id)
+		->execute()->fetchAssoc();
+
+	return $docs;
+}
+
+/*
+ * функция вывода страницы, на которой мы сможем проводить редактирование нашей таблицы - docs_list()
+ * */
+function alutech_bx_docs_list()
+{
+	$header = array(
+		array('data' => t('Путь к странице')),
+		array('data' => t('NID ноды')),
+		array('data' => t('NID родительской ноды')),
+		array('data' => t('Язык страницы')),
+		array('data' => t('Тип документации')),
+		array('data' => t('Группа продукции')),
+		/*array('data' => t('Краткий список документации')),
+		array('data' => t('Полный список документации')),*/
+		array('data' => t('Создано')),
+		array('data' => t('Изменено')),
+		array('data' => t('Действие'))
+	);
+	$docs = db_select('alutechbxdocs', 'n')
+		->fields('n', array('id', 'drp_path', 'drp_nid', 'drp_pnid', 'bx_lang', 'bx_type', 'bx_id'/*, 'bx_short_response', 'bx_full_response'*/, 'created', 'changed'))
+		->execute()->fetchAll();
+	$row = array();
+	if ($docs) {
+		foreach ($docs as $docs_feed) {
+			$actions = array(
+				l(t('Редактировать'), 'admin/structure/alutech_bx_docs/' . $docs_feed->id . '/edit'),
+				l(t('Удалить'), 'admin/structure/alutech_bx_docs/' . $docs_feed->id . '/delete'),
+			);
+
+			$row [] = array(
+				array('data' => $docs_feed->drp_path),
+				array('data' => $docs_feed->drp_nid),
+				array('data' => $docs_feed->drp_pnid),
+				array('data' => $docs_feed->bx_lang),
+				array('data' => $docs_feed->bx_type),
+				array('data' => $docs_feed->bx_id),
+				/*array('data' => $docs_feed->bx_short_response),
+				array('data' => $docs_feed->bx_full_response),*/
+				array('data' => date("d.m.Y H:i:s", $docs_feed->created)),
+				array('data' => date("d.m.Y H:i:s", $docs_feed->changed)),
+				array('data' => implode(' | ', $actions)),
+			);
+		}
+	}
+
+	return theme('table', array(
+		'header' => $header,
+		'rows'   => $row,
+	));
+}
+
+/*
+ * удаление записей
+ * */
+function alutech_bx_docs_delete($docs)
+{
+	$docs_deleted = db_delete('alutechbxdocs')
+		->condition('id', $docs['id'])
+		->execute();
+	drupal_set_message(t('Запись успешно удалена'));
+	drupal_goto('admin/structure/alutech_bx_docs');
+}
+
+/*
+ * функция возвращает данные из БД
+ * */
+function alutech_bx_docs_contents($nid)
+{
+	$query = db_select('alutechbxdocs', 'n')
+		->fields('n', array('bx_full_response'))
+		->condition('n.drp_nid', $nid)
+		->execute()
+		->fetchField();
+
+	return drupal_json_decode($query);
+}
+
+/*
+ * проверка на присутствие среди страниц с документацией
+ * вызывается на странице sites/all/themes/alutech/views/reference/views-view-fields--additional-tabs--default.tpl.php
+ * */
+function alutech_bx_docs_cert_tabs($nid)
+{
+	$res = db_select('alutechbxdocs', 'n')
+		->fields('n')
+		->condition('n.drp_nid', $nid)
+		->execute()
+		->fetchAll();
+
+	return $res;
+}
+
+/*
+ * вывод блока
+ * */
+function alutech_bx_docs_block_view($delta = '')
+{
+	$blocks = array();
+	$node = explode('/' , $_GET['q']);
+	switch ($delta) {
+		case 'alutech_bx_docs':
+			$entries = db_select('alutechbxdocs', 'n')
+				->fields('n', array('drp_path', 'bx_type', 'bx_short_response'))
+				->condition('n.drp_pnid', $node[1])
+				->condition('n.bx_type', array(37, 42, 36), 'IN')
+				->execute()
+				->fetchAll();
+			//$blocks['content'] = theme('bxdocs_block', array('entries' => $entries));
+			break;
+		case 'alutech_bx_photos':
+			$entries = db_select('alutechbxdocs', 'n')
+				->fields('n', array('drp_path', 'bx_type', 'bx_short_response'))
+				->condition('n.drp_pnid', $node[1])
+				->condition('n.bx_type', 35)
+				->execute()
+				->fetchAll();
+			//$blocks['content'] = theme('bxdocs_block', array('entries' => $entries));
+			break;
+		case 'alutech_bx_faq':
+			$entries = db_select('alutechbxdocs', 'n')
+				->fields('n', array('drp_path', 'bx_type', 'bx_short_response'))
+				->condition('n.drp_pnid', $node[1])
+				->condition('n.bx_type', 38)
+				->execute()
+				->fetchAll();
+			//$blocks['content'] = theme('bxdocs_block', array('entries' => $entries));
+			break;
+		case 'alutech_bx_video':
+			$entries = db_select('alutechbxdocs', 'n')
+				->fields('n', array('drp_path', 'bx_type', 'bx_short_response'))
+				->condition('n.drp_pnid', $node[1])
+				->condition('n.bx_type', 57)
+				->execute()
+				->fetchAll();
+			//$blocks['content'] = theme('bxdocs_block', array('entries' => $entries));
+			break;
+	}
+	if(!empty($entries))
+		$blocks['content'] = theme('bxdocs_block', array('entries' => $entries));
+	return $blocks;
+}
+
+/*
+ * страница со списком, при нажатии на которые, будет выводиться контент
+ * */
+function _alutech_bx_docs_page($nid, $type = NULL)
+{
+	$res = alutech_bx_docs_contents($nid);
+
+	if (!$res)
+		return FALSE;
+	else
+		return theme('bxdocs_page', array('list' => $res, 'type' => $type));
+}
+
+/*
+ * Инициализируем шаблоны для bxdocs_block, bxdocs_page и bxdocs_content
+ * */
+function alutech_bx_docs_theme()
+{
+	return array(
+		'bxdocs_block' => array(
+			'variables' => array( 'entries' => NULL ),
+			'template'  => 'bxdocs-block',
+		),
+		'bxdocs_page' => array(
+			'variables' => array( 'list' => NULL ),
+			'template'  => 'bxdocs-page',
+		)
+	);
+}
+
+/*
+ * Построение контента для страницы с документацией
+ * */
+function alutech_bx_docs_node_view($node, $view_mode, $langcode){
+	if ($view_mode == 'full') {
+		$result = _alutech_bx_docs_page($node->nid, $node->type);
+
+		if(!$result)
+			return;
+		$node->content['alutech_bx_docs_content'] = array(
+			"#markup" => $result,
+			"#weight" => 100,
+		);
+	}
+}
+
+/*
+ * Добавляем стили для страницы администрирования
+ * */
+function alutech_bx_docs_preprocess_html(&$variables)
+{
+	drupal_add_css(drupal_get_path('module', 'alutech_bx_docs') . '/adminstyle.css', array('group' => CSS_THEME));
+}
+
+/**
+ * Получаем список всех активных языков, использующихся в Друпал.
+ * Дополнительная переменная $lg для определения друпаловского языка из URL
+ */
+function alutech_bx_docs_language_list($lg = NULL)
+{
+	$languages = language_list('enabled');
+	$languages = $languages[1];
+	$list = array();
+	foreach ($languages as $language) {
+		if ($lg && $lg == $language->prefix)
+			return $language->language;
+		else
+			$list[$language->prefix] = t($language->name);
+	}
+	return $list;
+}
+
+/**
+ * Запуск hook_cron() для обновления JSON записей в БД.
+ */
+function alutech_bx_docs_cron()
+{
+	// Задаем интервал величиной в сутки
+	$interval = variable_get('alutech_bx_docs_interval', 60 * 60 * 24 - 300);
+
+	// Проверяем вышло ли время для старта процедуры обновления
+	if (time() >= variable_get('alutech_bx_docs_next_execution', 0))
+	{
+		// Выбираем из БД все записи
+		$docs = db_select('alutechbxdocs', 'n')
+			->fields('n', array('id', 'bx_lang', 'bx_type', 'bx_id'))
+			->execute()
+			->fetchAll();
+
+		// Перебираем полученные записи из БД
+		if ($docs)
+		{
+			foreach ($docs as $docs_feed)
+			{
+				if(isset($docs_feed->id))
+				{
+					// Получаем из Битрикс JSON данные
+					$short = bx_id_views_display_option($docs_feed->bx_lang, $docs_feed->bx_type, $docs_feed->bx_id, TRUE);
+					$full = bx_id_views_display_option($docs_feed->bx_lang, $docs_feed->bx_type, $docs_feed->bx_id);
+
+					// Готовим данные для записи в БД
+					$data = array(
+						'id' => $docs_feed->id,
+						'bx_short_response' => $short->data,
+						'bx_full_response'  => $full->data,
+						'changed' => time(),
+					);
+
+					// Сохраняем данные в БД
+					if (
+						(
+							isset($data['bx_short_response'])
+							&&
+							!empty($data['bx_short_response'])
+						)
+						&&
+						(
+							isset($data['bx_full_response'])
+							&&
+							!empty($data['bx_full_response'])
+						)
+					)
+					{
+						drupal_write_record('alutechbxdocs', $data, 'id');
+					}
+				}
+			}
+		}
+
+		// Перезаписываем переменную для проверки следующего старта обновления БД
+		variable_set('alutech_bx_docs_next_execution', time() + $interval);
+	}
+}
+
+
+function pp( $_mixVar=null, $_intExit=null ) {
+	echo "<div align='left' style='background-color:#FFFFFF;color:#000000'><hr><pre>";
+	if ( 2==$_intExit||3==$_intExit )
+		var_dump( $_mixVar );
+	elseif ( is_array( $_mixVar )||is_object( $_mixVar ) )
+		print_r( $_mixVar );
+	else
+		echo $_mixVar;
+	echo '</pre><hr></div>';
+	if ( 1==$_intExit||3==$_intExit)
+		exit;
+}

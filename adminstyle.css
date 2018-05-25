@@ -1,0 +1,9 @@
+#alutech-bx-docs-form .form-item::after {
+    content: "";
+    display: block;
+    clear: both;
+}
+#alutech-bx-docs-form .ajax-progress-throbber {
+    white-space:nowrap;
+    padding-left: 8px;
+}

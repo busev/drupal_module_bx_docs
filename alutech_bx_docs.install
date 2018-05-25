@@ -1,0 +1,93 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: busev
+ * Date: 22.02.2018
+ * Time: 10:08
+ */
+
+/**
+ * Implements hook_uninstall().
+ */
+function alutech_bx_docs_uninstall()
+{
+	cache_clear_all('alutech_bx_docs', 'cache', TRUE);
+	drupal_uninstall_schema('alutechbxdocs');
+	menu_rebuild();
+}
+
+/**
+ * Implements hook_schema().
+ *
+ */
+function alutech_bx_docs_schema()
+{
+	$schema['alutechbxdocs'] = array(
+		'fields' => array(
+			'id' => array(
+				'type' => 'serial',
+				'unsigned' => TRUE,
+				'not null' => TRUE,
+			),
+			'drp_path' => array(
+				'type' => 'varchar',
+				'length' => 255,
+				'not null' => TRUE,
+				'default' => '',
+			),
+			'drp_nid' => array(
+				'type' => 'varchar',
+				'length' => 64,
+				'not null' => TRUE,
+				'default' => '',
+			),
+			'drp_pnid' => array(
+				'type' => 'varchar',
+				'length' => 64,
+				'not null' => TRUE,
+				'default' => '',
+			),
+			'bx_lang' => array(
+				'type' => 'varchar',
+				'length' => 64,
+				'not null' => TRUE,
+				'default' => '',
+			),
+			'bx_type' => array(
+				'type' => 'varchar',
+				'length' => 255,
+				'not null' => TRUE,
+				'default' => '',
+			),
+			'bx_id' => array(
+				'type' => 'varchar',
+				'length' => 255,
+				'not null' => TRUE,
+				'default' => '',
+			),
+			'bx_short_response' => array(
+				'type' => 'text',
+				'size' => 'big',
+				'not null' => FALSE
+			),
+			'bx_full_response' => array(
+				'type' => 'text',
+				'size' => 'big',
+				'not null' => FALSE
+			),
+			'created' => array(
+				'type' => 'int',
+				'not null' => TRUE,
+				'default' => 0,
+			),
+			'changed' => array(
+				'type' => 'int',
+				'not null' => TRUE,
+				'default' => 0,
+			),
+		),
+		'primary key' => array('id')
+	);
+
+	return $schema;
+}
